@@ -3,429 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DitHero - Audio Converter</title>
-    <!-- Bootstrap CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
-    <!-- Bootstrap Icons -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
-    <style>
-        body {
-            background-color: #f8f9fa;
-        }
-        .container {
-            max-width: 900px;
-            margin-top: 2em;
-            margin-bottom: 2em;
-        }
-        .card {
-            margin-bottom: 1.5em;
-        }
-        #fileList li {
-            border-bottom: 1px solid #eee;
-            padding: 0.8rem 0.5rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        #fileList li:last-child {
-            border-bottom: none;
-        }
-        .file-details-main {
-             flex-grow: 1; /* Allow text to take available space */
-             margin-right: 1rem; /* Space before buttons/status */
-             overflow-wrap: break-word;
-        }
-        .file-name {
-             font-weight: 500;
-             display: block;
-             margin-bottom: 0.25rem;
-        }
-        .file-analysis-info {
-            font-size: 0.9em;
-            color: #495057; /* Darker gray */
-            display: block;
-        }
-        .file-analysis-info .highlight {
-             font-weight: bold;
-             color: #0d6efd; /* Primary color */
-             margin-right: 0.5rem;
-        }
-        .file-error-info {
-             font-size: 0.9em;
-             color: #dc3545; /* Danger color */
-             display: block;
-             font-weight: bold;
-        }
-        .file-status-indicator {
-            font-weight: bold;
-            min-width: 110px; /* Consistent width */
-            text-align: right;
-            margin-left: auto; /* Push to the right */
-            margin-right: 1rem; /* Space before actions */
-            flex-shrink: 0; /* Prevent shrinking */
-        }
-        .status-analyzing { color: #0dcaf0; } /* Info */
-        .status-ready { color: #198754; } /* Success */
-        .status-converting { color: #ffc107; } /* Warning */
-        .status-done { color: #198754; } /* Success */
-        .status-error { color: #dc3545; } /* Danger */
-
-        .file-actions {
-            min-width: 100px; /* Ensure space for buttons */
-            text-align: right;
-            flex-shrink: 0; /* Prevent shrinking */
-        }
-
-        /* Custom styling for file input */
-        #fileInput {
-            display: none; /* Hide default input */
-        }
-        .custom-file-upload {
-            border: 1px solid #ced4da;
-            display: inline-block;
-            padding: 6px 12px;
-            cursor: pointer;
-            background-color: #0d6efd;
-            color: white;
-            border-radius: 0.25rem;
-            transition: background-color 0.2s ease;
-        }
-        .custom-file-upload:hover {
-            background-color: #0b5ed7;
-        }
-        #fileNumInfo {
-             margin-left: 10px;
-             font-style: italic;
-             color: #6c757d;
-        }
-        .hidden {
-             display: none !important; /* Use important to override potential conflicts */
-        }
-    </style>
+    <title>DitHero - Modern Audio Converter</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- Favicon or other head elements can be added here -->
 </head>
 <body>
-    <div class="container">
-        <div class="card shadow-sm">
-            <div class="card-body text-center">
-                <h1 class="card-title text-primary mb-3">DitHero Audio Converter</h1>
-                <p class="card-text text-muted">
-                    Convert audio files to high-quality 16-bit, 44.1kHz WAV format with professional TPDF Dither.
-                    Supports single or batch processing.
-                </p>
+    <header>
+        <h1>DitHero</h1>
+        <p>High-Quality Audio Conversion</p>
+    </header>
 
-                <form id="uploadForm" class="mb-4">
-                    <label for="fileInput" class="custom-file-upload">
-                        <i class="bi bi-upload"></i> Choose Audio File(s)
-                    </label>
-                    <input type="file" id="fileInput" name="files[]" accept=".wav,.aiff,.aif,.flac,.ogg,.mp3,.opus,.m4a,.aac" multiple>
-                     <span id="fileNumInfo">No files selected</span>
-                </form>
+    <main class="layout-container">
+        <div class="layout-column input-column">
+            <section id="upload-area">
+                <div id="drop-zone">
+                    <h2>Upload Your Files</h2>
+                    <form id="uploadForm">
+                        <input type="file" id="fileInput" name="files[]" accept=".wav,.aiff,.aif,.flac,.ogg,.mp3,.opus,.m4a,.aac" multiple hidden>
+                        <button type="button" id="selectFilesBtn">Choose Files</button>
+                        <span id="fileNumInfo">or drag files here</span>
+                    </form>
+                    <div id="globalStatusBox"></div>
+                </div>
+            </section>
 
-                <div id="globalStatusBox" class="alert alert-info hidden" role="alert"></div>
-            </div>
+            <section id="options-area">
+                <h2>Conversion Options</h2>
+                <div class="options-grid">
+                    <div class="option-item">
+                        <label for="sampleRateSelect">Sample Rate:</label>
+                        <select id="sampleRateSelect" name="sample_rate">
+                            <option value="44100" selected>44.1 kHz (CD Quality)</option>
+                            <option value="48000">48 kHz (Standard Video)</option>
+                            <option value="88200">88.2 kHz</option>
+                            <option value="96000">96 kHz</option>
+                        </select>
+                    </div>
+                    <div class="option-item">
+                        <label for="bitDepthSelect">Bit Depth:</label>
+                        <select id="bitDepthSelect" name="bit_depth">
+                            <option value="16" selected>16-bit Integer (Dithered)</option>
+                            <option value="24">24-bit Integer (Dithered)</option>
+                            <!-- <option value="32">32-bit Integer (Dithered)</option> -->
+                            <option value="float">32-bit Float</option>
+                        </select>
+                        <span class="option-note">Integer formats include TPDF dither. Float does not.</span>
+                    </div>
+                </div>
+            </section>
         </div>
 
-        <div class="card shadow-sm">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <span>File Queue</span>
-                <button id="convertAllBtn" class="btn btn-sm btn-secondary" disabled>
-                     <i class="bi bi-play-fill"></i> Convert All Ready
-                 </button>
-            </div>
-            <div class="card-body">
-                <ul id="fileList" class="list-unstyled mb-0"></ul>
-                <div id="noFilesMessage" class="text-center text-muted mt-3">Select file(s) to begin.</div>
-            </div>
+        <div class="layout-column output-column">
+            <section id="file-queue">
+                <h2>File Queue</h2>
+                <div id="noFilesMessage">Select file(s) to begin.</div>
+                <ul id="fileList">
+                    <!-- File list items will be added here by JavaScript -->
+                </ul>
+                <button id="convertAllBtn" disabled>Convert All Ready</button>
+            </section>
         </div>
+    </main>
 
-    </div>
+    <footer>
+        <p>&copy; 2025 DitHero. Muammer Eren, Parydise Inc.</p>
+    </footer>
 
-    <!-- Bootstrap Bundle with Popper -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
-
-    <script>
-        const fileInput = document.getElementById('fileInput');
-        const fileListUI = document.getElementById('fileList');
-        const convertAllBtn = document.getElementById('convertAllBtn');
-        const globalStatusBox = document.getElementById('globalStatusBox');
-        const noFilesMessage = document.getElementById('noFilesMessage');
-        const fileNumInfo = document.getElementById('fileNumInfo');
-
-        let fileQueue = []; // Array to hold file objects with their state
-        let isBatchConverting = false; // Flag for batch conversion process
-
-        // --- File Input Change Handler ---
-        fileInput.addEventListener('change', async (event) => {
-            const files = event.target.files;
-            if (!files || files.length === 0) {
-                fileNumInfo.textContent = 'No files selected';
-                return;
-            }
-
-            // Clear previous queue and UI
-            fileQueue = [];
-            fileListUI.innerHTML = '';
-            noFilesMessage.classList.add('hidden'); // Use hidden class
-            globalStatusBox.classList.add('hidden');
-            updateConvertAllButtonState(); // Disable button initially
-            isBatchConverting = false; // Reset batch flag
-            fileNumInfo.textContent = `${files.length} file(s) selected`;
-
-            showGlobalStatus(`Analyzing ${files.length} file(s)...`, 'info');
-
-            const analysisPromises = [];
-
-            for (let i = 0; i < files.length; i++) {
-                const file = files[i];
-                const fileId = `file-${Date.now()}-${i}`; // Unique ID for this session
-
-                const fileEntry = {
-                    id: fileId,
-                    originalFile: file,
-                    status: 'analyzing', // Initial status
-                    statusText: 'Analyzing...',
-                    element: null, // Will hold the LI element
-                    serverFilepath: null, // Unique path on server after upload
-                    originalFilename: file.name,
-                    analysisInfo: null,
-                    error: null,
-                    downloadUrl: null,
-                    isConverting: false // Individual conversion flag
-                };
-                fileQueue.push(fileEntry);
-                addFileToListUI(fileEntry); // Add to UI immediately
-                analysisPromises.push(analyzeSingleFile(fileEntry)); // Start analysis
-            }
-
-            await Promise.all(analysisPromises);
-
-            updateConvertAllButtonState();
-            const readyCount = fileQueue.filter(f => f.status === 'ready').length;
-            const errorCount = fileQueue.filter(f => f.status === 'error').length;
-            if (readyCount === 0 && errorCount === files.length) {
-                showGlobalStatus(`Analysis failed for all files. Please check formats.`, 'danger');
-            } else if (errorCount > 0) {
-                showGlobalStatus(`Analysis complete. ${readyCount} ready, ${errorCount} error(s).`, 'warning');
-            } else {
-                showGlobalStatus(`Analysis complete. ${readyCount} file(s) ready for conversion.`, 'success');
-            }
-        });
-
-        // --- Add/Update File in UI List ---
-        function addFileToListUI(fileEntry) {
-            const li = document.createElement('li');
-            li.id = fileEntry.id;
-            li.innerHTML = createFileListItemHTML(fileEntry);
-            fileEntry.element = li;
-            fileListUI.appendChild(li);
-            attachActionListeners(li, fileEntry); // Attach listeners for buttons inside
-        }
-
-        function updateFileInListUI(fileEntry) {
-            if (!fileEntry.element) return;
-            // Re-render the list item content completely for simplicity
-            fileEntry.element.innerHTML = createFileListItemHTML(fileEntry);
-            attachActionListeners(fileEntry.element, fileEntry); // Re-attach listeners
-        }
-
-        // --- Generate HTML for a single file list item ---
-        function createFileListItemHTML(fileEntry) {
-            let analysisHTML = '';
-            if (fileEntry.error) {
-                analysisHTML = `<span class="file-error-info"><i class="bi bi-exclamation-triangle-fill"></i> ${escapeHTML(fileEntry.error)}</span>`;
-            } else if (fileEntry.analysisInfo) {
-                const info = fileEntry.analysisInfo;
-                const sr = info.samplerate ? `${info.samplerate} Hz` : 'N/A';
-                const depth = info.estimated_bit_depth ? `${info.estimated_bit_depth}-bit` : 'N/A';
-                const duration = info.duration_seconds ? `${info.duration_seconds.toFixed(1)}s` : 'N/A';
-                const channels = info.channels || 'N/A';
-                const format = `${escapeHTML(info.format) || 'N/A'} (${escapeHTML(info.subtype) || 'N/A'})`;
-
-                analysisHTML = `<span class="file-analysis-info">
-                                <span class="highlight"><i class="bi bi-soundwave"></i> SR: ${sr}</span>
-                                <span class="highlight"><i class="bi bi-bar-chart-steps"></i> Depth: ${depth}</span>
-                                <span> | Ch: ${channels}, Dur: ${duration}, Format: ${format}</span>
-                              </span>`;
-            } else {
-                 analysisHTML = `<span class="file-analysis-info text-muted">Awaiting analysis...</span>`;
-            }
-
-            let actionButtonHTML = '';
-            if (fileEntry.status === 'ready') {
-                actionButtonHTML = `<button class="btn btn-sm btn-primary action-convert" ${fileEntry.isConverting ? 'disabled' : ''}>
-                                      ${fileEntry.isConverting ? '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>' : '<i class="bi bi-gear-fill"></i> Convert'}
-                                    </button>`;
-            } else if (fileEntry.status === 'done') {
-                 actionButtonHTML = `<a href="${fileEntry.downloadUrl || '#'}" class="btn btn-sm btn-success action-download" download>
-                                      <i class="bi bi-download"></i> Download
-                                    </a>`;
-            }
-
-            return `
-                <div class="file-details-main">
-                    <span class="file-name">${escapeHTML(fileEntry.originalFilename)}</span>
-                    ${analysisHTML}
-                </div>
-                <span class="file-status-indicator status-${fileEntry.status}">${fileEntry.statusText}</span>
-                <div class="file-actions">
-                    ${actionButtonHTML}
-                </div>
-            `;
-        }
-
-        // --- Attach Listeners for Action Buttons (Convert/Download) ---
-        function attachActionListeners(listItemElement, fileEntry) {
-            const convertBtn = listItemElement.querySelector('.action-convert');
-            if (convertBtn) {
-                convertBtn.addEventListener('click', () => handleIndividualConvert(fileEntry));
-            }
-            // Download links work natively, no listener needed unless we want to track clicks
-        }
-
-        // --- Handle Individual Convert Click ---
-        async function handleIndividualConvert(fileEntry) {
-            if (fileEntry.status !== 'ready' || fileEntry.isConverting || isBatchConverting) {
-                return; // Don't convert if not ready, already converting, or batch is running
-            }
-
-            fileEntry.isConverting = true;
-            fileEntry.status = 'converting';
-            fileEntry.statusText = 'Converting...';
-            fileEntry.error = null;
-            updateFileInListUI(fileEntry); // Update UI to show spinner/status
-            updateConvertAllButtonState(); // Disable batch while individual runs
-
-            try {
-                const response = await fetch('/convert', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        filepath: fileEntry.serverFilepath,
-                        original_filename: fileEntry.originalFilename
-                    })
-                });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error || `Server error: ${response.status}`);
-
-                fileEntry.status = 'done';
-                fileEntry.statusText = 'Completed';
-                fileEntry.downloadUrl = `/download/${result.download_filename}`;
-
-            } catch (error) {
-                console.error('Conversion error for', fileEntry.originalFilename, ':', error);
-                fileEntry.status = 'error';
-                fileEntry.statusText = 'Failed';
-                fileEntry.error = error.message || 'Unknown conversion error';
-            }
-
-            fileEntry.isConverting = false;
-            updateFileInListUI(fileEntry); // Update UI with result (download or error)
-            updateConvertAllButtonState(); // Re-evaluate batch button state
-        }
-
-        // --- Analyze Single File (Server Call) ---
-        async function analyzeSingleFile(fileEntry) {
-            const formData = new FormData();
-            formData.append('file', fileEntry.originalFile);
-            try {
-                const response = await fetch('/analyze', { method: 'POST', body: formData });
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error || `Server error: ${response.status}`);
-                fileEntry.status = 'ready';
-                fileEntry.statusText = 'Ready';
-                fileEntry.serverFilepath = result.filepath;
-                fileEntry.analysisInfo = result.info;
-                fileEntry.originalFilename = result.original_filename || fileEntry.originalFilename;
-            } catch (error) {
-                console.error('Analysis error for', fileEntry.originalFilename, ':', error);
-                fileEntry.status = 'error';
-                fileEntry.statusText = 'Failed';
-                fileEntry.error = error.message || 'Unknown analysis error';
-            }
-            updateFileInListUI(fileEntry);
-        }
-
-        // --- Convert All Button Handler (Batch) ---
-        convertAllBtn.addEventListener('click', async () => {
-            if (isBatchConverting) return;
-
-            const filesToConvert = fileQueue.filter(f => f.status === 'ready' && !f.isConverting);
-            if (filesToConvert.length === 0) {
-                showGlobalStatus('No files currently ready for batch conversion.', 'warning');
-                return;
-            }
-
-            isBatchConverting = true;
-            updateConvertAllButtonState(); // Visually disable button
-            convertAllBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Converting All...';
-            showGlobalStatus(`Starting batch conversion for ${filesToConvert.length} file(s)...`, 'info');
-
-            let batchSuccess = 0;
-            let batchError = 0;
-
-            for (const fileEntry of filesToConvert) {
-                // Mark as converting individually and update UI
-                fileEntry.isConverting = true;
-                fileEntry.status = 'converting';
-                fileEntry.statusText = 'Converting...';
-                fileEntry.error = null;
-                updateFileInListUI(fileEntry);
-
-                try {
-                     const response = await fetch('/convert', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ filepath: fileEntry.serverFilepath, original_filename: fileEntry.originalFilename })
-                    });
-                    const result = await response.json();
-                    if (!response.ok) throw new Error(result.error || `Server error: ${response.status}`);
-
-                    fileEntry.status = 'done';
-                    fileEntry.statusText = 'Completed';
-                    fileEntry.downloadUrl = `/download/${result.download_filename}`;
-                    batchSuccess++;
-                } catch (error) {
-                    console.error('Batch conversion error for', fileEntry.originalFilename, ':', error);
-                    fileEntry.status = 'error';
-                    fileEntry.statusText = 'Failed';
-                    fileEntry.error = error.message || 'Unknown conversion error';
-                    batchError++;
-                }
-                 fileEntry.isConverting = false; // Mark individual as done
-                 updateFileInListUI(fileEntry); // Update UI for this file
-            }
-
-            // Reset batch state and button
-            isBatchConverting = false;
-            convertAllBtn.innerHTML = '<i class="bi bi-play-fill"></i> Convert All Ready';
-            updateConvertAllButtonState(); // Re-evaluate state based on remaining ready files
-
-            let finalMessage = `Batch conversion finished. ${batchSuccess} succeeded, ${batchError} failed.`;
-            showGlobalStatus(finalMessage, batchError > 0 ? 'warning' : 'success');
-        });
-
-        // --- Helper Functions ---
-        function updateConvertAllButtonState() {
-            const readyCount = fileQueue.filter(f => f.status === 'ready' && !f.isConverting).length;
-            // Disable if batch running OR if any individual file is converting OR if no files are ready
-            convertAllBtn.disabled = isBatchConverting || fileQueue.some(f => f.isConverting) || readyCount === 0;
-            noFilesMessage.classList.toggle('hidden', fileQueue.length > 0);
-        }
-
-        function showGlobalStatus(message, type = 'info') {
-            globalStatusBox.textContent = message;
-            globalStatusBox.className = `alert alert-${type}`;
-            globalStatusBox.classList.remove('hidden');
-        }
-
-        function escapeHTML(str) {
-             if (!str) return '';
-             const div = document.createElement('div');
-             div.appendChild(document.createTextNode(str));
-             return div.innerHTML;
-        }
-
-    </script>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
 </body>
 </html> 

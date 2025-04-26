@@ -1,0 +1,572 @@
+/* Apple-Inspired Monochromatic Theme */
+:root {
+    --background-color: #ffffff; /* White background */
+    --text-color: #1d1d1f; /* Apple's typical near-black text */
+    --secondary-text-color: #6e6e73; /* Lighter gray for secondary text */
+    --border-color: #d2d2d7; /* Light gray border */
+    --card-bg: #ffffff;
+    --interactive-color: #007aff; /* Apple blue for interactive elements */
+    --interactive-hover-color: #0040dd; /* Darker blue on hover */
+    --disabled-color: #c7c7cc; /* Disabled state gray */
+    --error-color: #ff3b30; /* Apple red for errors */
+    --success-color: #34c759; /* Apple green for success */
+    --warning-color: #ffcc00; /* Apple yellow for warning */
+    --info-color: #007aff; /* Using interactive blue for info */
+
+    --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; /* System font stack */
+    --base-font-size: 16px;
+    --border-radius: 8px; /* Slightly larger radius */
+    --spacing-unit: 1rem; /* 16px */
+}
+
+/* Reset and Base Styles */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-family);
+    font-size: var(--base-font-size);
+    background-color: var(--background-color);
+    color: var(--text-color);
+    line-height: 1.5; /* Slightly tighter line height */
+    margin: 0;
+    padding: calc(var(--spacing-unit) * 2) var(--spacing-unit); /* More padding top/bottom */
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    align-items: center;
+}
+
+main {
+    width: 100%;
+    max-width: 700px; /* Slightly narrower max width */
+    flex-grow: 1;
+    margin-top: calc(var(--spacing-unit) * 2);
+}
+
+/* Typography */
+h1, h2 {
+    color: var(--text-color); /* Use main text color */
+    font-weight: 600; /* Semibold */
+    margin-bottom: var(--spacing-unit);
+}
+
+h1 {
+    font-size: 2.25rem; /* 36px */
+    letter-spacing: -0.02em;
+}
+
+h2 {
+    font-size: 1.5rem; /* 24px */
+    letter-spacing: -0.01em;
+    margin-top: calc(var(--spacing-unit) * 2); /* Add more space above section titles */
+    border-bottom: 1px solid var(--border-color); /* Subtle separator */
+    padding-bottom: calc(var(--spacing-unit) * 0.5);
+}
+
+p {
+    margin-bottom: var(--spacing-unit);
+}
+
+/* Header & Footer */
+header, footer {
+    text-align: center;
+    width: 100%;
+    max-width: 700px;
+}
+
+header {
+    margin-bottom: calc(var(--spacing-unit) * 3);
+}
+header h1 {
+    margin-bottom: calc(var(--spacing-unit) * 0.25);
+}
+header p {
+    color: var(--secondary-text-color);
+    font-size: 1.1rem; /* Slightly larger description */
+}
+
+footer {
+    margin-top: calc(var(--spacing-unit) * 4);
+    padding-top: var(--spacing-unit);
+    border-top: 1px solid var(--border-color);
+    color: var(--secondary-text-color);
+    font-size: 0.875rem; /* 14px */
+}
+
+/* Sections (No explicit cards, use spacing) */
+section {
+    /* Remove card-like background and shadow for flatter look */
+    background-color: transparent;
+    padding: 0; /* Remove padding, handled by children */
+    margin-bottom: calc(var(--spacing-unit) * 2.5);
+    box-shadow: none;
+}
+
+/* Upload Area */
+#upload-area {
+    text-align: center;
+    padding: calc(var(--spacing-unit) * 2) var(--spacing-unit); /* Add padding here */
+    border: 1px solid var(--border-color); /* Add border */
+    border-radius: var(--border-radius);
+}
+
+#uploadForm {
+    margin-top: var(--spacing-unit);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: var(--spacing-unit);
+}
+
+/* Button Styling (Apple-like) */
+button, input[type="button"], input[type="submit"], a.button {
+    background-color: var(--interactive-color);
+    color: white;
+    border: none;
+    padding: calc(var(--spacing-unit) * 0.65) calc(var(--spacing-unit) * 1.3); /* Adjust padding */
+    border-radius: var(--border-radius);
+    cursor: pointer;
+    font-size: 0.95rem; /* Slightly smaller font */
+    font-weight: 500; /* Medium weight */
+    text-decoration: none; /* For <a> tags styled as buttons */
+    display: inline-block;
+    transition: background-color 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+    text-align: center;
+}
+
+button:hover, input[type="button"]:hover, input[type="submit"]:hover, a.button:hover {
+    background-color: var(--interactive-hover-color);
+    transform: translateY(-1px); /* Subtle lift */
+}
+
+button:active, input[type="button"]:active, input[type="submit"]:active, a.button:active {
+    transform: translateY(0); /* Press down */
+}
+
+
+button:disabled, input:disabled {
+    background-color: var(--disabled-color);
+    opacity: 0.8;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Specific Buttons */
+#selectFilesBtn {
+    /* Make primary action more prominent */
+    font-weight: 600;
+}
+
+#convertAllBtn {
+    display: block;
+    margin: calc(var(--spacing-unit) * 1.5) auto 0; /* Center it */
+    background-color: var(--success-color); /* Green for convert */
+    min-width: 180px;
+}
+#convertAllBtn:hover:not(:disabled) {
+     background-color: #2aa14a; /* Darker green */
+}
+
+
+#fileNumInfo {
+    color: var(--secondary-text-color);
+    font-size: 0.875rem;
+}
+
+/* Global Status Box */
+#globalStatusBox {
+    margin-top: var(--spacing-unit);
+    padding: calc(var(--spacing-unit) * 0.75) var(--spacing-unit);
+    border-radius: var(--border-radius);
+    display: none; /* Hidden by default */
+    text-align: center;
+    font-size: 0.9rem;
+    border: 1px solid transparent;
+}
+.status-info { background-color: #e6f2ff; color: #0040dd; border-color: #b3d1ff;}
+.status-success { background-color: #eaf8ee; color: #217a3a; border-color: #b6e3c0;}
+.status-warning { background-color: #fff8e1; color: #8a6d1a; border-color: #ffecb3;}
+.status-danger { background-color: #ffebee; color: #c62828; border-color: #ffcdd2;}
+
+
+/* File Queue */
+#fileList {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    border: 1px solid var(--border-color); /* Border around the list */
+    border-radius: var(--border-radius);
+    overflow: hidden; /* Clip children to border radius */
+}
+
+#fileList li {
+    /* Removed bottom border, using borders on parent */
+    padding: var(--spacing-unit) calc(var(--spacing-unit) * 1.5);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--spacing-unit);
+    background-color: var(--card-bg); /* White background for items */
+    border-bottom: 1px solid var(--border-color); /* Separator line */
+}
+
+#fileList li:last-child {
+    border-bottom: none; /* No border on the last item */
+}
+
+.file-details {
+    flex-grow: 1;
+    min-width: 200px;
+}
+
+.file-name {
+    font-weight: 500; /* Medium weight for filename */
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--text-color);
+}
+
+.file-info {
+    font-size: 0.85rem; /* Smaller info text */
+    color: var(--secondary-text-color);
+    word-break: break-all;
+}
+.file-info .highlight {
+    color: var(--text-color); /* Use main text color for highlights */
+    margin-right: 0.75em;
+    font-weight: 500;
+}
+.file-error {
+    font-size: 0.85rem;
+    color: var(--error-color);
+    font-weight: 500;
+}
+
+
+.file-status {
+    font-weight: 500;
+    text-align: right;
+    min-width: 110px;
+    flex-shrink: 0;
+    font-size: 0.9rem;
+}
+/* Status Text Colors */
+.status-analyzing { color: var(--secondary-text-color); }
+.status-ready { color: var(--success-color); }
+.status-converting { color: var(--warning-color); }
+.status-done { color: var(--success-color); }
+.status-error { color: var(--error-color); }
+
+.file-actions {
+    min-width: 90px; /* Adjust width */
+    text-align: right;
+    flex-shrink: 0;
+}
+
+/* Use link style for download, button for convert */
+.file-actions button, .file-actions a {
+    padding: calc(var(--spacing-unit) * 0.4) calc(var(--spacing-unit) * 0.8);
+    font-size: 0.85rem; /* Smaller action buttons */
+}
+.action-convert {
+     /* Inherits base button style (blue) */
+}
+.action-download {
+    background-color: transparent;
+    color: var(--interactive-color);
+    text-decoration: underline;
+    padding: calc(var(--spacing-unit) * 0.4) 0; /* Less padding for link */
+}
+.action-download:hover {
+    color: var(--interactive-hover-color);
+    background-color: transparent; /* Ensure no bg on hover */
+    transform: none; /* No lift for link */
+}
+
+
+#noFilesMessage {
+    color: var(--secondary-text-color);
+    text-align: center;
+    margin-top: var(--spacing-unit);
+    padding: calc(var(--spacing-unit) * 1.5);
+    border: 1px dashed var(--border-color); /* Dashed border */
+    border-radius: var(--border-radius);
+    font-size: 0.95rem;
+}
+
+/* Spinner (Simple CSS - keep as is or refine) */
+.spinner {
+    border: 2px solid var(--disabled-color); /* Lighter border */
+    border-left-color: var(--text-color); /* Use text color for spinner arc */
+    border-radius: 50%;
+    width: 14px; /* Slightly smaller */
+    height: 14px;
+    animation: spin 0.8s linear infinite;
+    display: inline-block;
+    margin-right: 6px;
+    vertical-align: -2px; /* Align better with text */
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    body {
+        padding: var(--spacing-unit);
+    }
+    main {
+         margin-top: var(--spacing-unit);
+         max-width: 100%; /* Allow full width */
+    }
+    h1 { font-size: 1.8rem; }
+    h2 { font-size: 1.3rem; }
+
+    #uploadForm {
+        flex-direction: column;
+        align-items: stretch; /* Stretch button */
+    }
+     #upload-area {
+         padding: var(--spacing-unit);
+     }
+
+    #fileList li {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: var(--spacing-unit);
+    }
+    .file-status, .file-actions {
+        text-align: left;
+        width: 100%;
+        margin-top: calc(var(--spacing-unit) * 0.75);
+    }
+     .file-actions {
+         min-width: unset; /* Remove min-width */
+     }
+}
+
+/* Conversion Options Section */
+#options-area {
+    padding: calc(var(--spacing-unit) * 1.5);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--card-bg); /* Give it a background */
+}
+
+#options-area h2 {
+    margin-top: 0; /* Remove extra top margin */
+    margin-bottom: calc(var(--spacing-unit) * 1.5);
+    padding-bottom: calc(var(--spacing-unit) * 0.5);
+    border-bottom: 1px solid var(--border-color);
+    font-size: 1.2rem; /* Slightly smaller heading */
+}
+
+.options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); /* Responsive grid */
+    gap: calc(var(--spacing-unit) * 1.5);
+}
+
+.option-item label {
+    display: block;
+    margin-bottom: calc(var(--spacing-unit) * 0.5);
+    font-weight: 500;
+    color: var(--text-color);
+}
+
+.option-item select {
+    width: 100%;
+    padding: calc(var(--spacing-unit) * 0.6);
+    border: 1px solid var(--border-color);
+    border-radius: calc(var(--border-radius) / 1.5); /* Slightly smaller radius for inputs */
+    font-size: 0.95rem;
+    background-color: #fff; /* Ensure white background */
+    -webkit-appearance: none; /* Basic custom arrow styling */
+    -moz-appearance: none;
+    appearance: none;
+    background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%236e6e73%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.5-12.8z%22%2F%3E%3C%2Fsvg%3E');
+    background-repeat: no-repeat;
+    background-position: right 0.7em top 50%;
+    background-size: 0.65em auto;
+    cursor: pointer;
+}
+.option-item select:focus {
+     border-color: var(--interactive-color);
+     outline: none;
+     box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.2); /* Subtle focus ring */
+}
+
+.option-note {
+    display: block;
+    font-size: 0.8rem;
+    color: var(--secondary-text-color);
+    margin-top: calc(var(--spacing-unit) * 0.4);
+}
+
+/* Responsive Options Area */
+@media (max-width: 600px) {
+     #options-area {
+         padding: var(--spacing-unit);
+     }
+    .options-grid {
+        grid-template-columns: 1fr; /* Stack on mobile */
+        gap: var(--spacing-unit);
+    }
+}
+
+/* Interactivity Enhancements */
+
+/* Drop Zone Styling */
+#drop-zone {
+    padding: calc(var(--spacing-unit) * 1.5); /* Adjusted padding */
+    border-radius: 0; /* Remove radius, handled by section */
+    transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+#drop-zone.dragover {
+    background-color: transparent; /* Prevent drop-zone bg changing */
+}
+
+/* File List Item Hover Effect */
+#fileList li:hover {
+    background-color: #f8f8f8; /* Very light gray background on hover */
+}
+
+/* Remove Button Styling */
+.action-remove {
+    background-color: transparent;
+    color: var(--error-color); /* Use error color for remove */
+    border: none;
+    padding: calc(var(--spacing-unit) * 0.4) 0; /* Minimal padding */
+    font-size: 0.85rem;
+    cursor: pointer;
+    text-decoration: none; /* Remove underline if it's an <a> */
+    margin-left: var(--spacing-unit); /* Space from other actions */
+    font-weight: 500;
+    transition: color 0.15s ease;
+}
+
+.action-remove:hover {
+    color: #c62828; /* Darker red on hover */
+}
+
+/* Adjust file actions alignment */
+.file-actions {
+    display: flex; /* Use flexbox for better alignment */
+    align-items: center;
+    gap: calc(var(--spacing-unit) * 0.75);
+}
+
+/* Ensure download link styles correctly within flex */
+.action-download {
+     line-height: 1; /* Align better with buttons */
+     padding-bottom: 2px; /* Fine-tune alignment */
+     padding-top: 2px;
+}
+
+/* Responsive Drop Zone */
+@media (max-width: 600px) {
+     #drop-zone {
+         padding: var(--spacing-unit);
+     }
+}
+
+/* Layout Adjustments for Two Columns */
+
+/* Increase max-width for wider layout */
+main.layout-container {
+    max-width: 1200px; /* Adjust as needed */
+    display: flex;
+    flex-wrap: wrap; /* Allow wrapping on smaller screens */
+    gap: calc(var(--spacing-unit) * 2);
+    align-items: flex-start; /* Align columns at the top */
+}
+
+.layout-column {
+    flex-grow: 1;
+    flex-basis: 0; /* Allow columns to grow equally */
+    min-width: 300px; /* Minimum width before wrapping */
+}
+
+/* Optional: Define specific flex ratios if needed */
+/*
+.input-column {
+    flex-basis: 40%;
+}
+.output-column {
+    flex-basis: 60%;
+}
+*/
+
+/* Ensure sections within columns take full width */
+.layout-column section {
+    width: 100%;
+    margin-bottom: calc(var(--spacing-unit) * 2); /* Consistent spacing */
+    padding: calc(var(--spacing-unit) * 1.5); /* Common padding */
+    border: 1px solid var(--border-color); /* Common border */
+    border-radius: var(--border-radius); /* Common radius */
+    background-color: var(--card-bg); /* Common background */
+}
+/* Remove margin from the last section in a column */
+.layout-column section:last-child {
+    margin-bottom: 0;
+}
+
+
+/* Responsive adjustments for layout */
+@media (max-width: 800px) {
+    main.layout-container {
+        flex-direction: column; /* Stack columns vertically */
+        gap: 0; /* Remove gap when stacked */
+        max-width: 700px; /* Revert to narrower width */
+    }
+    .layout-column {
+        /* Reset flex properties for stacking */
+        flex-basis: auto;
+        width: 100%;
+        min-width: unset;
+        margin-bottom: calc(var(--spacing-unit) * 2); /* Add spacing between stacked columns */
+    }
+     .layout-column:last-child {
+         margin-bottom: 0;
+     }
+     /* Ensure consistent section margin on mobile */
+     .layout-column section {
+         margin-bottom: calc(var(--spacing-unit) * 2);
+     }
+      .layout-column section:last-child {
+          margin-bottom: 0;
+      }
+}
+
+/* Adjustments for existing rules if needed */
+/* e.g., ensure headers within columns look right */
+.layout-column h2 {
+     /* Styles might already be sufficient */
+}
+
+/* Ensure noFilesMessage looks ok in the column */
+#noFilesMessage {
+    /* Potentially adjust styles if needed */
+}
+
+/* Keep dragover effect, but target the section now */
+#upload-area.dragover {
+    background-color: #e6f2ff;
+    border-color: var(--interactive-color);
+}
+#drop-zone.dragover {
+     background-color: transparent; /* Prevent drop-zone bg changing */
+ }
+
+/* Adjust drop zone text alignment within the new padding */
+#upload-area {
+     text-align: center; /* Ensure content inside is centered */
+}
+#uploadForm {
+     /* Styles should still work */
+} 

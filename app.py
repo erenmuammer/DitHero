@@ -35,17 +35,22 @@ def allowed_file(filename):
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 # --- Moved from main.py ---
-def apply_tpdf_dither(audio_data_float):
-    """Applies Triangular Probability Density Function (TPDF) dither."""
+def apply_tpdf_dither(audio_data_float, target_bit_depth):
+    """Applies TPDF dither scaled to the target integer bit depth."""
+    if not isinstance(target_bit_depth, int) or target_bit_depth <= 0:
+        # Safety check, shouldn't happen with current usage but good practice
+        print(f"Warning: Invalid target_bit_depth ({target_bit_depth}) for dither. Skipping dither.")
+        return audio_data_float
+
+    print(f"Applying TPDF dither scaled for {target_bit_depth}-bit target...")
     # Generate TPDF noise: sum of two uniform distributions
     # Use float64 for intermediate noise calculations for precision
     noise1 = np.random.uniform(-0.5, 0.5, size=audio_data_float.shape).astype(np.float64)
     noise2 = np.random.uniform(-0.5, 0.5, size=audio_data_float.shape).astype(np.float64)
     tpdf_noise = noise1 + noise2
 
-    # Scale noise to the range of one quantization step for 16-bit audio
-    # For float audio in [-1.0, 1.0], the 16-bit step is 2.0 / 65536
-    quantization_step = 2.0 / (2**16)
+    # Scale noise to the range of one quantization step for the TARGET bit depth
+    quantization_step = 2.0 / (2**target_bit_depth)
     scaled_noise = tpdf_noise * quantization_step
 
     # Add dither noise before quantization
@@ -55,8 +60,8 @@ def apply_tpdf_dither(audio_data_float):
 
 # --- Moved and adapted from main.py ---
 def convert_audio(input_path, output_path, target_sr=44100, target_bit_depth=16):
-    """Converts an audio file to 16-bit, 44.1kHz WAV with TPDF dither."""
-    print(f"Conversion process started for {input_path}") # Log start
+    """Converts an audio file to target format with optional TPDF dither."""
+    print(f"Conversion process started for {input_path} to SR={target_sr}, BitDepth={target_bit_depth}") # Log start
     try:
         # --- 1. Load Audio File ---
         print(f"Loading audio file: {input_path}")
@@ -110,28 +115,48 @@ def convert_audio(input_path, output_path, target_sr=44100, target_bit_depth=16)
         else:
             print("Sample rate matches target. No resampling needed.")
 
-        # --- 3. Apply TPDF Dither ---
-        print("Applying TPDF dither...")
-        dithered_audio_float = apply_tpdf_dither(audio_data)
-
-        # --- 4. Quantization to Target Bit Depth (16-bit integer) ---
-        # Clipping is important after adding noise
-        print("Clipping audio data between -1.0 and 1.0...")
-        dithered_audio_float = np.clip(dithered_audio_float, -1.0, 1.0)
-
-        print(f"Quantizing to {target_bit_depth}-bit...")
-        if target_bit_depth == 16:
-            # Scale to 16-bit integer range [-32767, 32767] for writing
-            # Using 32767 instead of 32768 to avoid potential clipping issues with max value
-            audio_data_int = (dithered_audio_float * 32767.0).astype(np.int16)
-            subtype = 'PCM_16'
+        # --- 3. Apply TPDF Dither (Only for Integer Targets) ---
+        apply_dither = False
+        if isinstance(target_bit_depth, int) and target_bit_depth in [16, 24]: # Check if it's an integer target we support dithering for
+            # Pass the target_bit_depth to the dither function
+            audio_data = apply_tpdf_dither(audio_data, target_bit_depth)
+            apply_dither = True # Keep track if dither was applied (optional)
+        elif target_bit_depth == 'float':
+            print("Skipping dither for non-integer target (float).")
         else:
-            # Should not happen with current setup, but good practice
+            # Should not happen if validation in /convert is correct
+             print(f"Warning: Dither not applied for unexpected target_bit_depth: {target_bit_depth}")
+
+        # --- 4. Quantization/Clipping ---
+        # Clipping is always important, especially if dither was added or if source was float
+        print("Clipping audio data between -1.0 and 1.0...")
+        audio_data = np.clip(audio_data, -1.0, 1.0)
+
+        print(f"Preparing for target format: {target_bit_depth}-bit...")
+        subtype = None
+        if target_bit_depth == 16:
+            # Scale to 16-bit integer range
+            audio_data_out = (audio_data * 32767.0).astype(np.int16)
+            subtype = 'PCM_16'
+        elif target_bit_depth == 24:
+             # Scale to 24-bit integer range (use float first, then scale to int range for sf.write)
+            # sf.write handles scaling for PCM_24 if data is int32, but it's safer to scale manually
+            # Scale to approx range [-8388607, 8388607]
+            audio_data_out = (audio_data * 8388607.0).astype(np.int32) # Write as int32, sf handles 24bit packing
+            subtype = 'PCM_24'
+        # Note: Soundfile PCM_32 might not be universally compatible. Often float is preferred.
+        # elif target_bit_depth == 32:
+        #     audio_data_out = (audio_data * 2147483647.0).astype(np.int32)
+        #     subtype = 'PCM_32'
+        elif target_bit_depth == 'float': # Check for string 'float' from JS
+            audio_data_out = audio_data.astype(np.float32)
+            subtype = 'FLOAT'
+        else:
             raise ValueError(f"Unsupported target bit depth: {target_bit_depth}")
 
         # --- 5. Save Output File ---
-        print(f"Saving converted file to: {output_path}")
-        sf.write(output_path, audio_data_int, target_sr, subtype=subtype, format='WAV')
+        print(f"Saving converted file to: {output_path} with subtype: {subtype}")
+        sf.write(output_path, audio_data_out, target_sr, subtype=subtype, format='WAV')
         print(f"Conversion successful: {output_path}")
         return True # Indicate success
 
@@ -150,7 +175,7 @@ def convert_audio(input_path, output_path, target_sr=44100, target_bit_depth=16)
                  print(f"Error cleaning up partial output {output_path}: {e_clean}", file=sys.stderr)
         return False # Indicate failure
 
-# --- End of moved functions ---
+# --- End of convert_audio function ---
 
 
 def get_audio_info(file_path):
@@ -262,8 +287,28 @@ def analyze_file():
 @app.route('/convert', methods=['POST'])
 def convert_file_route():
     data = request.get_json()
+    if not data:
+        return jsonify({'error': 'Invalid request format (no JSON)'}), 400
+
     input_unique_filename = data.get('filepath')
     original_filename = data.get('original_filename', 'converted_file')
+    # Get target SR and Bit Depth from request, with defaults
+    try:
+        target_sr = int(data.get('target_sr', 44100)) # Default to 44100
+    except (ValueError, TypeError):
+        target_sr = 44100
+        print(f"Warning: Invalid target_sr received, defaulting to {target_sr}")
+
+    target_bit_depth_str = str(data.get('target_bit_depth', '16')).lower() # Default to '16'
+    # Map string to internal representation (int or 'float')
+    if target_bit_depth_str == 'float':
+        target_bit_depth = 'float'
+    elif target_bit_depth_str.isdigit() and int(target_bit_depth_str) in [16, 24]: # Add 32 if supported later
+        target_bit_depth = int(target_bit_depth_str)
+    else:
+        target_bit_depth = 16 # Default to 16-bit if invalid
+        print(f"Warning: Invalid target_bit_depth received ('{target_bit_depth_str}'), defaulting to {target_bit_depth}")
+
 
     if not input_unique_filename:
         return jsonify({'error': 'Missing filepath for conversion'}), 400
@@ -283,21 +328,21 @@ def convert_file_route():
         print(f"Error: Input file {input_path} not found for conversion.")
         return jsonify({'error': 'Uploaded file not found on server. It might have been cleaned up or never saved correctly. Please upload again.'}), 404
 
-    # Construct output filename
+    # Construct output filename reflecting the format
     base, _ = os.path.splitext(original_filename)
-    # Ensure the base name is also secured
     safe_base = secure_filename(base)
-    output_filename = f"{safe_base}_16bit_441kHz.wav"
+    # Format bit depth string for filename
+    bit_depth_fname = f"{target_bit_depth}bit" if isinstance(target_bit_depth, int) else "float"
+    output_filename = f"{safe_base}_{bit_depth_fname}_{target_sr//1000}kHz.wav"
     output_path = os.path.join(app.config['CONVERTED_FOLDER'], output_filename)
 
-    print(f"Starting conversion task: {input_path} -> {output_path}")
+    print(f"Starting conversion task: {input_path} -> {output_path} (SR={target_sr}, BD={target_bit_depth})")
 
     # --- Call the actual conversion logic ---
     try:
-        # Use the convert_audio function we moved into this file
-        success = convert_audio(input_path, output_path)
+        # Pass the target parameters
+        success = convert_audio(input_path, output_path, target_sr=target_sr, target_bit_depth=target_bit_depth)
     except Exception as e:
-        # Catch unexpected errors during the call itself
         print(f"Fatal error during conversion call for {input_path}: {e}", file=sys.stderr)
         success = False
 
