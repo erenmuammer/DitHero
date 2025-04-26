@@ -1,4 +1,5 @@
 numpy
 soundfile
 resampy 
-Flask 
+Flask
+gunicorn 
