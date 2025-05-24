@@ -1,5 +1,7 @@
 import os
 import sys
+import subprocess
+import json
 from flask import Flask, request, render_template, jsonify, send_from_directory
 import soundfile as sf
 import numpy as np
@@ -29,6 +31,65 @@ app.config['MAX_CONTENT_LENGTH'] = 64 * 1024 * 1024 # Increased limit slightly (
 # Ensure upload and converted directories exist
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(CONVERTED_FOLDER, exist_ok=True)
+
+# Check if FFprobe is available (typically comes with FFmpeg)
+def is_ffprobe_available():
+    try:
+        subprocess.run(['ffprobe', '-version'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return True
+    except (FileNotFoundError, subprocess.SubprocessError):
+        return False
+
+FFPROBE_AVAILABLE = is_ffprobe_available()
+print(f"FFprobe available: {FFPROBE_AVAILABLE}")
+
+# Function to get accurate bitrate using FFprobe
+def get_mp3_bitrate_with_ffprobe(file_path):
+    """Use FFprobe to get accurate MP3 bitrate information"""
+    try:
+        # Run ffprobe with JSON output format for easy parsing
+        command = [
+            'ffprobe', 
+            '-v', 'quiet', 
+            '-print_format', 'json', 
+            '-show_format', 
+            '-show_streams', 
+            file_path
+        ]
+        result = subprocess.run(command, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"FFprobe error: {result.stderr}")
+            return None
+            
+        # Parse the JSON output
+        data = json.loads(result.stdout)
+        print(f"FFprobe data: {data}")
+        
+        # Try to find bitrate in the output
+        bitrate = None
+        
+        # First check format section for bitrate
+        if 'format' in data and 'bit_rate' in data['format']:
+            bitrate = int(data['format']['bit_rate'])
+        
+        # If not found, check each audio stream
+        if not bitrate and 'streams' in data:
+            for stream in data['streams']:
+                if stream.get('codec_type') == 'audio' and 'bit_rate' in stream:
+                    bitrate = int(stream['bit_rate'])
+                    break
+        
+        # Convert from bps to kbps if needed
+        if bitrate and bitrate > 1000:
+            bitrate = int(bitrate / 1000)
+            
+        print(f"FFprobe detected bitrate: {bitrate} kbps")
+        return bitrate
+        
+    except Exception as e:
+        print(f"Error using FFprobe: {e}")
+        return None
 
 def allowed_file(filename):
     return '.' in filename and \
@@ -180,7 +241,16 @@ def convert_audio(input_path, output_path, target_sr=44100, target_bit_depth=16)
 
 def get_audio_info(file_path):
     """Reads basic audio file information using soundfile and fallback."""
-    info = {'samplerate': None, 'channels': None, 'format': None, 'subtype': None, 'duration_seconds': None, 'estimated_bit_depth': None, 'error': None}
+    info = {'samplerate': None, 'channels': None, 'format': None, 'subtype': None, 'duration_seconds': None, 'estimated_bit_depth': None, 'error': None, 'bit_rate': None}
+    
+    # For MP3 files, try to get accurate bitrate with ffprobe first
+    if file_path.lower().endswith('.mp3') and FFPROBE_AVAILABLE:
+        print(f"Using FFprobe to get MP3 bitrate for {file_path}")
+        bitrate = get_mp3_bitrate_with_ffprobe(file_path)
+        if bitrate:
+            info['bit_rate'] = bitrate
+            print(f"FFprobe detected bitrate: {bitrate} kbps")
+    
     try:
         sf_info = sf.info(file_path)
         info['samplerate'] = sf_info.samplerate
@@ -206,11 +276,75 @@ def get_audio_info(file_path):
                 info['channels'] = audio_segment.channels
                 info['duration_seconds'] = audio_segment.duration_seconds
                 try:
+                    # Get detailed mediainfo for MP3 files to extract bitrate
+                    print(f"Getting detailed media info via pydub for {file_path}")
                     media_info = mediainfo(file_path)
+                    print(f"Full MediaInfo: {media_info}") # Debug: Dump entire media_info
+                    
+                    # Look for format/codec info
                     info['format'] = media_info.get('codec_name', 'N/A')
+                    
                     # Handle potential ValueError if bits_per_sample is not an integer string
                     bits_str = media_info.get('bits_per_sample')
                     info['estimated_bit_depth'] = int(bits_str) if bits_str and bits_str.isdigit() else None
+                    
+                    # Only check for bitrate if we don't already have it from FFprobe
+                    if info['bit_rate'] is None:
+                        # Check all possible bitrate keys in mediainfo
+                        possible_bitrate_keys = ['bit_rate', 'bitrate', 'nominal_bit_rate']
+                        
+                        # Try different keys for bit rate
+                        bit_rate = None
+                        for key in possible_bitrate_keys:
+                            if key in media_info and media_info[key]:
+                                bit_rate = media_info[key]
+                                print(f"Found bitrate in key '{key}': {bit_rate}")
+                                break
+                        
+                        # Also check if the filename contains bitrate info (common for some MP3s)
+                        if not bit_rate and os.path.basename(file_path).lower().endswith('.mp3'):
+                            # Check if mediainfo has audio stream details
+                            if 'streams' in media_info and len(media_info['streams']) > 0:
+                                for stream in media_info['streams']:
+                                    if stream.get('codec_type') == 'audio' and 'bit_rate' in stream:
+                                        bit_rate = stream['bit_rate']
+                                        print(f"Found bitrate in stream info: {bit_rate}")
+                                        break
+                        
+                        if bit_rate:
+                            try:
+                                # FFmpeg sometimes returns bit rate as a string like "320000" or "320k"
+                                # Convert to integer and handle different formats
+                                if isinstance(bit_rate, str) and 'k' in bit_rate.lower():
+                                    # Handle "320k" format
+                                    bit_rate_val = int(bit_rate.lower().replace('k', '').strip())
+                                    print(f"Parsed '{bit_rate}' as {bit_rate_val} kbps")
+                                else:
+                                    bit_rate_val = int(bit_rate)
+                                    # If larger than 1000, it's likely in bps, convert to kbps for display
+                                    if bit_rate_val > 1000:
+                                        bit_rate_val = int(bit_rate_val / 1000)
+                                        print(f"Converted {bit_rate} bps to {bit_rate_val} kbps")
+                                    
+                                info['bit_rate'] = bit_rate_val
+                                print(f"Final bitrate value: {info['bit_rate']} kbps")
+                            except (ValueError, TypeError) as e:
+                                # Just store as-is if parsing fails
+                                print(f"Could not parse bitrate value '{bit_rate}': {e}")
+                                info['bit_rate'] = bit_rate
+                        else:
+                            # For MP3 files, try to estimate bitrate from file size and duration
+                            if os.path.basename(file_path).lower().endswith('.mp3') and info['duration_seconds'] and info['bit_rate'] is None:
+                                try:
+                                    file_size_bytes = os.path.getsize(file_path)
+                                    # Bitrate = file size in bits / duration in seconds
+                                    # This is approximate but works reasonably well for MP3
+                                    estimated_bitrate = int((file_size_bytes * 8) / info['duration_seconds'] / 1000)
+                                    info['bit_rate'] = estimated_bitrate
+                                    print(f"Estimated bitrate from file size: {estimated_bitrate} kbps")
+                                except Exception as e_size:
+                                    print(f"Could not estimate bitrate from file size: {e_size}")
+                    
                     print(f"Pydub MediaInfo: {media_info}") # Debugging
                 except Exception as e_mi:
                     print(f"Could not get detailed media info via pydub: {e_mi}")
@@ -309,6 +443,18 @@ def convert_file_route():
         target_bit_depth = 16 # Default to 16-bit if invalid
         print(f"Warning: Invalid target_bit_depth received ('{target_bit_depth_str}'), defaulting to {target_bit_depth}")
 
+    # Get MP3 bitrate if provided
+    mp3_bitrate = None
+    try:
+        if 'mp3_bitrate' in data and data['mp3_bitrate'] is not None:
+            mp3_bitrate = int(data['mp3_bitrate'])
+            # Validate that it's a common bitrate value
+            if mp3_bitrate not in [128, 192, 256, 320]:
+                print(f"Warning: Unusual MP3 bitrate received: {mp3_bitrate}, but will attempt")
+    except (ValueError, TypeError):
+        print(f"Warning: Invalid mp3_bitrate received, ignoring")
+        mp3_bitrate = None
+
 
     if not input_unique_filename:
         return jsonify({'error': 'Missing filepath for conversion'}), 400
@@ -328,20 +474,41 @@ def convert_file_route():
         print(f"Error: Input file {input_path} not found for conversion.")
         return jsonify({'error': 'Uploaded file not found on server. It might have been cleaned up or never saved correctly. Please upload again.'}), 404
 
+    # Check if it's an MP3 file and mp3_bitrate is specified
+    is_mp3 = False
+    if original_filename.lower().endswith('.mp3') and mp3_bitrate is not None:
+        is_mp3 = True
+        print(f"MP3 file detected with requested bitrate: {mp3_bitrate} kbps")
+
     # Construct output filename reflecting the format
-    base, _ = os.path.splitext(original_filename)
+    base, ext = os.path.splitext(original_filename)
     safe_base = secure_filename(base)
-    # Format bit depth string for filename
-    bit_depth_fname = f"{target_bit_depth}bit" if isinstance(target_bit_depth, int) else "float"
-    output_filename = f"{safe_base}_{bit_depth_fname}_{target_sr//1000}kHz.wav"
+    
+    if is_mp3:
+        # For MP3 files, include bitrate in the filename
+        output_filename = f"{safe_base}_{mp3_bitrate}kbps.mp3"
+    else:
+        # Format bit depth string for filename (for non-MP3 files)
+        bit_depth_fname = f"{target_bit_depth}bit" if isinstance(target_bit_depth, int) else "float"
+        output_filename = f"{safe_base}_{bit_depth_fname}_{target_sr//1000}kHz.wav"
+    
     output_path = os.path.join(app.config['CONVERTED_FOLDER'], output_filename)
 
-    print(f"Starting conversion task: {input_path} -> {output_path} (SR={target_sr}, BD={target_bit_depth})")
+    print(f"Starting conversion task: {input_path} -> {output_path}")
+    if is_mp3:
+        print(f"MP3 conversion with target bitrate: {mp3_bitrate} kbps")
+    else:
+        print(f"Standard conversion with SR={target_sr}, BD={target_bit_depth}")
 
     # --- Call the actual conversion logic ---
     try:
-        # Pass the target parameters
-        success = convert_audio(input_path, output_path, target_sr=target_sr, target_bit_depth=target_bit_depth)
+        success = False
+        if is_mp3:
+            # Use MP3-specific conversion
+            success = convert_mp3_bitrate(input_path, output_path, mp3_bitrate)
+        else:
+            # Pass the target parameters to regular converter
+            success = convert_audio(input_path, output_path, target_sr=target_sr, target_bit_depth=target_bit_depth)
     except Exception as e:
         print(f"Fatal error during conversion call for {input_path}: {e}", file=sys.stderr)
         success = False
@@ -370,6 +537,139 @@ def convert_file_route():
         print(f"Conversion task failed for {original_filename}.")
         return jsonify({'error': 'Conversion failed. See server logs for details.'}), 500
 
+# Function to convert MP3 bitrate
+def convert_mp3_bitrate(input_path, output_path, target_bitrate):
+    """
+    Converts an MP3 file to a different bitrate using pydub (which uses FFmpeg)
+    
+    Args:
+        input_path: Path to the input MP3 file
+        output_path: Path to save the converted MP3 file
+        target_bitrate: Target bitrate in kbps (e.g., 128, 192, 256, 320)
+        
+    Returns:
+        bool: True if conversion was successful, False otherwise
+    """
+    print(f"Converting MP3 bitrate: {input_path} -> {output_path} @ {target_bitrate}kbps")
+    
+    if not PYDUB_AVAILABLE:
+        print("Error: pydub not available. Cannot convert MP3 bitrate.")
+        return False
+    
+    try:
+        # Get current bitrate for logging
+        current_bitrate = None
+        try:
+            info = mediainfo(input_path)
+            print(f"Input file mediainfo: {info}")
+            
+            # Try to find bitrate in the mediainfo
+            for key in ['bit_rate', 'bitrate', 'nominal_bit_rate']:
+                if key in info and info[key]:
+                    current_bitrate = info[key]
+                    break
+                    
+            # Parse the bitrate
+            if current_bitrate:
+                if isinstance(current_bitrate, str) and 'k' in current_bitrate.lower():
+                    current_bitrate = int(current_bitrate.lower().replace('k', '').strip())
+                else:
+                    current_bitrate = int(current_bitrate)
+                    if current_bitrate > 1000:
+                        current_bitrate = int(current_bitrate / 1000)
+                print(f"Current MP3 bitrate: {current_bitrate}kbps")
+            
+            # If mediainfo doesn't provide bitrate, estimate from file size
+            if not current_bitrate:
+                file_size = os.path.getsize(input_path)
+                duration = float(info.get('duration', 0))
+                if duration > 0:
+                    estimated_bitrate = int((file_size * 8) / duration / 1000)
+                    current_bitrate = estimated_bitrate
+                    print(f"Estimated MP3 bitrate from file size: {current_bitrate}kbps")
+                
+        except Exception as e:
+            print(f"Could not determine current bitrate: {e}")
+        
+        # Load the MP3 file
+        print(f"Loading MP3 file: {input_path}")
+        audio = AudioSegment.from_mp3(input_path)
+        
+        # Get some stats about the audio
+        print(f"Audio stats: {len(audio)/1000}s, {audio.channels} channels, {audio.frame_rate}Hz, {audio.sample_width*8} bits")
+        
+        # Prepare FFmpeg parameters for better quality
+        # Different approaches for different target bitrates
+        parameters = []
+        
+        if target_bitrate >= 256:
+            # For high bitrates, use constant bitrate (CBR) for best quality
+            parameters = ["-b:a", f"{target_bitrate}k", "-c:a", "libmp3lame", "-q:a", "0"]
+            print(f"Using CBR encoding for high bitrate ({target_bitrate}kbps)")
+        else:
+            # For lower bitrates, use variable bitrate (VBR) for better quality/size ratio
+            # Map bitrate to VBR quality setting (0=best, 9=worst)
+            vbr_quality = 0  # Default high quality
+            if target_bitrate <= 128:
+                vbr_quality = 4  # Medium quality for lower bitrates
+            elif target_bitrate <= 192:
+                vbr_quality = 2  # Better quality for medium bitrates
+                
+            parameters = ["-q:a", str(vbr_quality)]
+            print(f"Using VBR encoding with quality level {vbr_quality} for {target_bitrate}kbps")
+            
+        # Export with the new bitrate
+        print(f"Exporting MP3 with bitrate: {target_bitrate}kbps")
+        audio.export(
+            output_path,
+            format="mp3",
+            bitrate=f"{target_bitrate}k",
+            parameters=parameters
+        )
+        
+        # Verify the file was created and has the correct bitrate
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            try:
+                # Verify the output file has the correct bitrate
+                output_info = mediainfo(output_path)
+                print(f"Output file mediainfo: {output_info}")
+                
+                # Get the final bitrate to confirm conversion
+                final_bitrate = None
+                for key in ['bit_rate', 'bitrate', 'nominal_bit_rate']:
+                    if key in output_info and output_info[key]:
+                        final_bitrate = output_info[key]
+                        break
+                        
+                if final_bitrate:
+                    if isinstance(final_bitrate, str) and 'k' in final_bitrate.lower():
+                        final_bitrate = int(final_bitrate.lower().replace('k', '').strip())
+                    else:
+                        final_bitrate = int(final_bitrate)
+                        if final_bitrate > 1000:
+                            final_bitrate = int(final_bitrate / 1000)
+                    print(f"Output MP3 bitrate confirmed: {final_bitrate} kbps")
+            except Exception as e:
+                print(f"Could not verify output bitrate: {e}")
+                
+            print(f"MP3 bitrate conversion successful: {output_path}")
+            return True
+        else:
+            print(f"MP3 output file missing or empty: {output_path}")
+            return False
+            
+    except Exception as e:
+        print(f"Error during MP3 bitrate conversion: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        # Clean up potentially partially written output file
+        if os.path.exists(output_path):
+            try:
+                os.remove(output_path)
+                print(f"Cleaned up partial output file: {output_path}")
+            except Exception as e_clean:
+                print(f"Error cleaning up partial output {output_path}: {e_clean}", file=sys.stderr)
+        return False
 
 @app.route('/download/<filename>')
 def download_file(filename):

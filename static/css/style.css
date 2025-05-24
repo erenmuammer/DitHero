@@ -569,4 +569,46 @@ main.layout-container {
 }
 #uploadForm {
      /* Styles should still work */
+}
+
+/* Add styling for the file type option containers */
+.options-title {
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--text-color);
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+    font-size: 0.95rem;
+}
+
+#wavOptionsContainer, #mp3BitrateContainer {
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 15px;
+    margin-bottom: 20px;
+    background-color: #f9f9f9;
+}
+
+.separate-options {
+    position: relative;
+}
+
+.separate-options::after {
+    content: "OR";
+    position: absolute;
+    bottom: -25px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--background-color);
+    padding: 0 10px;
+    font-size: 0.8rem;
+    color: var(--secondary-text-color);
+    font-weight: 600;
+}
+
+/* Make options more organized */
+.options-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 30px; /* Increased for better separation */
 } 

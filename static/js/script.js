@@ -11,10 +11,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const bitDepthSelect = document.getElementById('bitDepthSelect');
     const dropZone = document.getElementById('drop-zone');
     const ditherNote = document.querySelector('.option-note');
+    const mp3BitrateContainer = document.getElementById('mp3BitrateContainer');
+    const mp3BitrateSelect = document.getElementById('mp3BitrateSelect');
+    const wavOptionsContainer = document.getElementById('wavOptionsContainer');
 
     // --- State ---
     let fileQueue = []; // Array to hold file objects { id, originalFile, status, statusText, element, serverFilepath, originalFilename, analysisInfo, error, downloadUrl, isConverting }
     let isBatchConverting = false;
+    let hasMp3Files = false; // Track if we have MP3 files in the queue
+    let hasWavFiles = false; // Track if we have WAV files in the queue
 
     // --- Event Listeners ---
 
@@ -65,6 +70,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Update global status after all analyses are done (or failed)
         updateUIBasedOnAnalysis();
+        
+        // Check which file types are in the queue and update option visibility
+        updateFileTypeOptions();
     });
 
     // Handle "Convert All" button click
@@ -133,6 +141,10 @@ document.addEventListener('DOMContentLoaded', () => {
         isBatchConverting = false;
         fileNumInfo.textContent = 'No files selected';
         fileInput.value = ''; // Clear the file input selection
+        hasMp3Files = false;
+        hasWavFiles = false;
+        mp3BitrateContainer.style.display = 'none'; // Hide MP3 bitrate options
+        wavOptionsContainer.style.display = 'none'; // Hide WAV options
     }
 
     async function analyzeSingleFile(fileEntry) {
@@ -154,6 +166,32 @@ document.addEventListener('DOMContentLoaded', () => {
             fileEntry.analysisInfo = result.info;
             // Use filename from server if available (might be sanitized)
             fileEntry.originalFilename = result.original_filename || fileEntry.originalFilename;
+            
+            // Check file type based on extension
+            const fileExtension = fileEntry.originalFilename.split('.').pop().toLowerCase();
+            
+            // MP3 files
+            if (fileExtension === 'mp3') {
+                fileEntry.isMp3 = true;
+                fileEntry.isLossy = true;
+                hasMp3Files = true;
+                
+                // Display bitrate info prominently if available
+                if (result.info && result.info.bit_rate) {
+                    fileEntry.bitrate = result.info.bit_rate;
+                    console.log(`Detected bitrate for ${fileEntry.originalFilename}: ${fileEntry.bitrate} kbps`);
+                }
+            } 
+            // WAV and other lossless formats
+            else if (['wav', 'aiff', 'aif', 'flac'].includes(fileExtension)) {
+                fileEntry.isWav = true;
+                fileEntry.isLossless = true;
+                hasWavFiles = true;
+            }
+            // Other lossy formats (ogg, m4a, aac, opus)
+            else if (['ogg', 'm4a', 'aac', 'opus'].includes(fileExtension)) {
+                fileEntry.isLossy = true;
+            }
 
         } catch (error) {
             console.error('Analysis error for', fileEntry.originalFilename, ':', error);
@@ -185,6 +223,24 @@ document.addEventListener('DOMContentLoaded', () => {
         updateConvertAllButtonState();
     }
 
+    // Function to update options visibility based on file types
+    function updateFileTypeOptions() {
+        // Show/hide MP3 bitrate options
+        mp3BitrateContainer.style.display = hasMp3Files ? 'block' : 'none';
+        
+        // Show/hide WAV options (sample rate and bit depth)
+        wavOptionsContainer.style.display = hasWavFiles ? 'block' : 'none';
+        
+        // If we have both types, add some visual separation
+        if (hasMp3Files && hasWavFiles) {
+            // Add a class to highlight different sections
+            wavOptionsContainer.classList.add('separate-options');
+            mp3BitrateContainer.classList.add('separate-options');
+        } else {
+            wavOptionsContainer.classList.remove('separate-options');
+            mp3BitrateContainer.classList.remove('separate-options');
+        }
+    }
 
     async function handleIndividualConvert(fileEntry) {
         if (fileEntry.status !== 'ready' || fileEntry.isConverting || isBatchConverting) {
@@ -199,19 +255,26 @@ document.addEventListener('DOMContentLoaded', () => {
         updateConvertAllButtonState(); // Disable batch button during individual conversion
 
         try {
-            // Get selected options
-            const targetSr = parseInt(sampleRateSelect.value, 10);
-            const targetBitDepth = bitDepthSelect.value; // Keep as string ('16', '24', 'float')
+            // Get selected options based on file type
+            const conversionData = {
+                filepath: fileEntry.serverFilepath,
+                original_filename: fileEntry.originalFilename,
+            };
+            
+            // Add proper parameters based on file type
+            if (fileEntry.isMp3) {
+                // For MP3 files, use the bitrate parameter
+                conversionData.mp3_bitrate = parseInt(mp3BitrateSelect.value, 10);
+            } else {
+                // For WAV and other files, use sample rate and bit depth
+                conversionData.target_sr = parseInt(sampleRateSelect.value, 10);
+                conversionData.target_bit_depth = bitDepthSelect.value;
+            }
 
             const response = await fetch('/convert', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    filepath: fileEntry.serverFilepath,
-                    original_filename: fileEntry.originalFilename,
-                    target_sr: targetSr,
-                    target_bit_depth: targetBitDepth
-                })
+                body: JSON.stringify(conversionData)
             });
             const result = await response.json();
             if (!response.ok) {
@@ -255,6 +318,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Get selected options ONCE before the loop
         const targetSr = parseInt(sampleRateSelect.value, 10);
         const targetBitDepth = bitDepthSelect.value; // Keep as string ('16', '24', 'float')
+        const targetMp3Bitrate = parseInt(mp3BitrateSelect.value, 10); // Get MP3 bitrate
 
         // Convert files sequentially to avoid overwhelming the server (can be parallelized if server supports it)
         for (const fileEntry of filesToConvert) {
@@ -266,15 +330,26 @@ document.addEventListener('DOMContentLoaded', () => {
             updateFileInListUI(fileEntry);
 
             try {
+                // Prepare conversion parameters
+                const conversionData = {
+                    filepath: fileEntry.serverFilepath,
+                    original_filename: fileEntry.originalFilename,
+                };
+                
+                // Add proper parameters based on file type
+                if (fileEntry.isMp3) {
+                    // For MP3 files, use the bitrate parameter
+                    conversionData.mp3_bitrate = targetMp3Bitrate;
+                } else {
+                    // For WAV and other files, use sample rate and bit depth
+                    conversionData.target_sr = targetSr;
+                    conversionData.target_bit_depth = targetBitDepth;
+                }
+
                 const response = await fetch('/convert', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        filepath: fileEntry.serverFilepath,
-                        original_filename: fileEntry.originalFilename,
-                        target_sr: targetSr,
-                        target_bit_depth: targetBitDepth
-                    })
+                    body: JSON.stringify(conversionData)
                 });
                 const result = await response.json();
                 if (!response.ok) throw new Error(result.error || `Server error: ${response.status}`);
@@ -340,11 +415,40 @@ document.addEventListener('DOMContentLoaded', () => {
             const format = escapeHTML(info.format || 'N/A');
             const subtype = escapeHTML(info.subtype || 'N/A');
 
-            infoHTML = `<span class="file-info">
-                           <span class="highlight">SR: ${sr}</span>
-                           <span class="highlight">Depth: ${depth}</span>
-                           <span> | Ch: ${channels}, Dur: ${duration}, Format: ${format} (${subtype})</span>
-                         </span>`;
+            // Add bitrate information for MP3 files if available
+            let bitrate = '';
+            if (fileEntry.isMp3) {
+                // Convert from bps to kbps if needed
+                let bitrateVal = info.bit_rate;
+                if (typeof bitrateVal === 'string') {
+                    bitrateVal = parseInt(bitrateVal, 10);
+                }
+                if (bitrateVal > 1000) {
+                    bitrateVal = Math.round(bitrateVal / 1000);
+                }
+                
+                // For MP3 files, make bitrate more prominent
+                if (bitrateVal) {
+                    bitrate = `<span class="highlight" style="color: #007aff; font-weight: bold;">Bitrate: ${bitrateVal} kbps</span>`;
+                } else {
+                    bitrate = `<span class="highlight">Bitrate: N/A</span>`;
+                }
+            }
+
+            // For MP3 files, show bitrate information prominently
+            if (fileEntry.isMp3) {
+                infoHTML = `<span class="file-info">
+                               ${bitrate}
+                               <span class="highlight">SR: ${sr}</span>
+                               <span> | Ch: ${channels}, Dur: ${duration}</span>
+                             </span>`;
+            } else {
+                infoHTML = `<span class="file-info">
+                               <span class="highlight">SR: ${sr}</span>
+                               <span class="highlight">Depth: ${depth}</span>
+                               <span> | Ch: ${channels}, Dur: ${duration}, Format: ${format} ${subtype !== 'N/A' ? `(${subtype})` : ''}</span>
+                             </span>`;
+            }
         } else if (fileEntry.status === 'analyzing') {
              infoHTML = `<span class="file-info">Awaiting analysis...</span>`;
         }
@@ -359,8 +463,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (fileEntry.status === 'ready') {
             actionButtonHTML = `<button class="action-convert" ${fileEntry.isConverting ? 'disabled' : ''}>
-                                  ${fileEntry.isConverting ? '<span class="spinner"></span>' : ''} Convert
-                                </button>`;
+                              ${fileEntry.isConverting ? '<span class="spinner"></span>' : ''} Convert
+                            </button>`;
         } else if (fileEntry.status === 'converting') {
              actionButtonHTML = `<button class="action-convert" disabled><span class="spinner"></span> Converting</button>`;
         } else if (fileEntry.status === 'done' && fileEntry.downloadUrl) {
