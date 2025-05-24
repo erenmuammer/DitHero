@@ -497,11 +497,11 @@ def convert_file_route():
     safe_base = secure_filename(base)
     
     if convert_wav_to_mp3:
-        # For WAV to MP3 conversion
-        output_filename = f"{safe_base}_{mp3_bitrate}kbps.mp3"
+        # For WAV to MP3 conversion - keep original name, just change extension
+        output_filename = f"{safe_base}.mp3"
     elif convert_to_mp3:
-        # For MP3 bitrate conversion
-        output_filename = f"{safe_base}_{mp3_bitrate}kbps.mp3"
+        # For MP3 bitrate conversion - keep original name
+        output_filename = f"{safe_base}.mp3"
     else:
         # Format bit depth string for filename (for non-MP3 files)
         bit_depth_fname = f"{target_bit_depth}bit" if isinstance(target_bit_depth, int) else "float"
@@ -957,9 +957,9 @@ def download_all_files():
             if not os.path.isfile(file_path):
                 return jsonify({'error': f'File not found: {filename}'}), 404
         
-        # Create a temporary zip file
-        timestamp = int(time.time())
-        zip_filename = f"dithero_downloads_{timestamp}.zip"
+        # Create a timestamp with formatted date and time (YYYY-MM-DD_HH-MM-SS)
+        timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
+        zip_filename = f"dithero_{timestamp}.zip"
         temp_dir = tempfile.gettempdir()
         zip_path = os.path.join(temp_dir, zip_filename)
         
