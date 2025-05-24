@@ -29,6 +29,17 @@
 
             <section id="options-area">
                 <h2>Conversion Options</h2>
+                
+                <!-- Output Format Toggle -->
+                <div class="format-toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="convertToMp3Toggle">
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">Convert to MP3</span>
+                    </label>
+                    <div class="toggle-description">Enable to convert WAV/AIFF/FLAC files to MP3 format.</div>
+                </div>
+                
                 <div class="options-grid">
                     <!-- WAV/AIFF/FLAC Options Container -->
                     <div id="wavOptionsContainer" style="display: none;">
@@ -77,7 +88,10 @@
                 <ul id="fileList">
                     <!-- File list items will be added here by JavaScript -->
                 </ul>
-                <button id="convertAllBtn" disabled>Convert All Ready</button>
+                <div class="action-buttons">
+                    <button id="convertAllBtn" disabled>Convert All Ready</button>
+                    <button id="batchDownloadBtn" class="batch-download-btn" style="display: none;" disabled>Download All as ZIP</button>
+                </div>
             </section>
         </div>
     </main>

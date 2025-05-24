@@ -2,7 +2,11 @@ import os
 import sys
 import subprocess
 import json
-from flask import Flask, request, render_template, jsonify, send_from_directory
+import zipfile
+import tempfile
+import time
+from pathlib import Path
+from flask import Flask, request, render_template, jsonify, send_from_directory, send_file
 import soundfile as sf
 import numpy as np
 import resampy # Added import
@@ -426,6 +430,9 @@ def convert_file_route():
 
     input_unique_filename = data.get('filepath')
     original_filename = data.get('original_filename', 'converted_file')
+    # Get target format if specified
+    target_format = data.get('target_format', '').lower()
+    
     # Get target SR and Bit Depth from request, with defaults
     try:
         target_sr = int(data.get('target_sr', 44100)) # Default to 44100
@@ -474,18 +481,26 @@ def convert_file_route():
         print(f"Error: Input file {input_path} not found for conversion.")
         return jsonify({'error': 'Uploaded file not found on server. It might have been cleaned up or never saved correctly. Please upload again.'}), 404
 
-    # Check if it's an MP3 file and mp3_bitrate is specified
-    is_mp3 = False
-    if original_filename.lower().endswith('.mp3') and mp3_bitrate is not None:
-        is_mp3 = True
-        print(f"MP3 file detected with requested bitrate: {mp3_bitrate} kbps")
+    # Determine conversion type
+    convert_to_mp3 = target_format == 'mp3' or original_filename.lower().endswith('.mp3')
+    
+    # Special case: convert from WAV/AIFF/FLAC to MP3
+    convert_wav_to_mp3 = False
+    if target_format == 'mp3' and not original_filename.lower().endswith('.mp3'):
+        convert_wav_to_mp3 = True
+        if not mp3_bitrate:
+            mp3_bitrate = 320  # Default to high quality if not specified
+        print(f"Converting from WAV/AIFF/FLAC to MP3 at {mp3_bitrate}kbps")
 
     # Construct output filename reflecting the format
     base, ext = os.path.splitext(original_filename)
     safe_base = secure_filename(base)
     
-    if is_mp3:
-        # For MP3 files, include bitrate in the filename
+    if convert_wav_to_mp3:
+        # For WAV to MP3 conversion
+        output_filename = f"{safe_base}_{mp3_bitrate}kbps.mp3"
+    elif convert_to_mp3:
+        # For MP3 bitrate conversion
         output_filename = f"{safe_base}_{mp3_bitrate}kbps.mp3"
     else:
         # Format bit depth string for filename (for non-MP3 files)
@@ -495,7 +510,9 @@ def convert_file_route():
     output_path = os.path.join(app.config['CONVERTED_FOLDER'], output_filename)
 
     print(f"Starting conversion task: {input_path} -> {output_path}")
-    if is_mp3:
+    if convert_wav_to_mp3:
+        print(f"WAV to MP3 conversion with target bitrate: {mp3_bitrate} kbps")
+    elif convert_to_mp3:
         print(f"MP3 conversion with target bitrate: {mp3_bitrate} kbps")
     else:
         print(f"Standard conversion with SR={target_sr}, BD={target_bit_depth}")
@@ -503,7 +520,10 @@ def convert_file_route():
     # --- Call the actual conversion logic ---
     try:
         success = False
-        if is_mp3:
+        if convert_wav_to_mp3:
+            # Use WAV to MP3 conversion
+            success = convert_to_mp3_format(input_path, output_path, mp3_bitrate)
+        elif convert_to_mp3:
             # Use MP3-specific conversion
             success = convert_mp3_bitrate(input_path, output_path, mp3_bitrate)
         else:
@@ -603,9 +623,34 @@ def convert_mp3_bitrate(input_path, output_path, target_bitrate):
         parameters = []
         
         if target_bitrate >= 256:
-            # For high bitrates, use constant bitrate (CBR) for best quality
-            parameters = ["-b:a", f"{target_bitrate}k", "-c:a", "libmp3lame", "-q:a", "0"]
-            print(f"Using CBR encoding for high bitrate ({target_bitrate}kbps)")
+            # For high bitrates, use strict CBR encoding
+            parameters = [
+                "-c:a", "libmp3lame",                # MP3 codec
+                "-b:a", f"{target_bitrate}k",        # Target bitrate
+                "-abr", "0",                         # Disable ABR mode
+                "-ac", str(audio.channels),          # Keep same number of channels
+                "-ar", str(audio.frame_rate),        # Keep same sample rate
+                "-q:a", "0",                         # Highest quality encoding
+                "-compression_level", "0",           # Highest compression level
+                "-application", "audio",             # Audio application type
+                "-cutoff", "20000",                  # Maximum frequency cutoff
+            ]
+            
+            # Add CBR mode enforcement - key fix for 320kbps
+            if target_bitrate == 320:
+                parameters.extend([
+                    "-vbr", "off",                   # Disable VBR
+                    "-minrate", f"{target_bitrate}k", # Set minimum bitrate
+                    "-maxrate", f"{target_bitrate}k", # Set maximum bitrate
+                    "-bufsize", f"{target_bitrate}k", # Set buffer size
+                    "-joint_stereo", "0",            # Disable joint stereo for maximum quality
+                ])
+                print(f"Using strict CBR encoding for {target_bitrate}kbps")
+            else:
+                parameters.extend([
+                    "-joint_stereo", "1",            # Use joint stereo for good quality/size
+                ])
+                print(f"Using high-quality CBR encoding ({target_bitrate}kbps)")
         else:
             # For lower bitrates, use variable bitrate (VBR) for better quality/size ratio
             # Map bitrate to VBR quality setting (0=best, 9=worst)
@@ -620,6 +665,7 @@ def convert_mp3_bitrate(input_path, output_path, target_bitrate):
             
         # Export with the new bitrate
         print(f"Exporting MP3 with bitrate: {target_bitrate}kbps")
+        print(f"Using FFmpeg parameters: {parameters}")
         audio.export(
             output_path,
             format="mp3",
@@ -649,6 +695,17 @@ def convert_mp3_bitrate(input_path, output_path, target_bitrate):
                         if final_bitrate > 1000:
                             final_bitrate = int(final_bitrate / 1000)
                     print(f"Output MP3 bitrate confirmed: {final_bitrate} kbps")
+                    
+                # Additional verification with ffprobe for 320kbps
+                if FFPROBE_AVAILABLE and target_bitrate == 320:
+                    actual_bitrate = get_mp3_bitrate_with_ffprobe(output_path)
+                    print(f"Verified bitrate with ffprobe: {actual_bitrate} kbps (target was {target_bitrate} kbps)")
+                    
+                    # If bitrate is significantly lower, try direct FFmpeg approach
+                    if actual_bitrate and actual_bitrate < target_bitrate * 0.95:
+                        print(f"Bitrate is too low ({actual_bitrate}kbps), falling back to direct FFmpeg encoding")
+                        return convert_to_mp3_with_ffmpeg(input_path, output_path, target_bitrate)
+                
             except Exception as e:
                 print(f"Could not verify output bitrate: {e}")
                 
@@ -669,6 +726,185 @@ def convert_mp3_bitrate(input_path, output_path, target_bitrate):
                 print(f"Cleaned up partial output file: {output_path}")
             except Exception as e_clean:
                 print(f"Error cleaning up partial output {output_path}: {e_clean}", file=sys.stderr)
+        return False
+
+# Function to convert any audio format to MP3
+def convert_to_mp3_format(input_path, output_path, target_bitrate):
+    """
+    Converts any supported audio file to MP3 format with high quality settings
+    
+    Args:
+        input_path: Path to the input audio file
+        output_path: Path to save the converted MP3 file
+        target_bitrate: Target bitrate in kbps (e.g., 128, 192, 256, 320)
+        
+    Returns:
+        bool: True if conversion was successful, False otherwise
+    """
+    print(f"Converting to MP3: {input_path} -> {output_path} @ {target_bitrate}kbps")
+    
+    if not PYDUB_AVAILABLE:
+        print("Error: pydub not available. Cannot convert to MP3 format.")
+        return False
+    
+    try:
+        # Load the audio file (pydub can handle various formats)
+        print(f"Loading audio file: {input_path}")
+        audio = AudioSegment.from_file(input_path)
+        
+        # Get some stats about the audio
+        print(f"Audio stats: {len(audio)/1000}s, {audio.channels} channels, {audio.frame_rate}Hz, {audio.sample_width*8} bits")
+        
+        # Determine optimal encoding parameters based on target bitrate
+        # For best quality with minimal loss when converting lossless to MP3
+        parameters = []
+        
+        if target_bitrate >= 256:
+            # For high bitrates, use constant bitrate (CBR) with strict enforcement
+            parameters = [
+                "-b:a", f"{target_bitrate}k",     # Target bitrate
+                "-c:a", "libmp3lame",             # MP3 codec
+                "-abr", "0",                      # Disable ABR mode
+                "-codec:a", "libmp3lame",         # Explicitly set codec
+                "-ac", str(audio.channels),       # Keep same number of channels
+                "-ar", str(audio.frame_rate),     # Keep same sample rate
+                "-q:a", "0",                      # Highest quality encoding
+                "-compression_level", "0",        # Highest compression level
+                "-application", "audio",          # Audio application type
+                "-cutoff", "20000",               # Maximum frequency cutoff
+            ]
+            
+            # Add CBR mode enforcement - key fix for 320kbps
+            if target_bitrate == 320:
+                parameters.extend([
+                    "-vbr", "off",                # Disable VBR
+                    "-minrate", f"{target_bitrate}k",  # Set minimum bitrate
+                    "-maxrate", f"{target_bitrate}k",  # Set maximum bitrate
+                    "-bufsize", f"{target_bitrate}k",  # Set buffer size
+                    "-application", "audio",      # Audio application type
+                    "-joint_stereo", "0",         # Disable joint stereo for maximum quality
+                ])
+                print(f"Using strict CBR encoding for {target_bitrate}kbps")
+            else:
+                # For other high bitrates (256kbps)
+                parameters.extend([
+                    "-joint_stereo", "1",         # Use joint stereo for good quality/size
+                ])
+                print(f"Using high-quality CBR encoding ({target_bitrate}kbps)")
+        else:
+            # For lower bitrates, use variable bitrate (VBR) for better quality/size ratio
+            # Map bitrate to VBR quality setting (0=best, 9=worst)
+            vbr_quality = 0  # Default high quality
+            if target_bitrate <= 128:
+                vbr_quality = 3  # Medium quality for lower bitrates
+            elif target_bitrate <= 192:
+                vbr_quality = 2  # Better quality for medium bitrates
+                
+            parameters = [
+                "-q:a", str(vbr_quality),         # VBR quality level
+                "-joint_stereo", "1"              # Use joint stereo
+            ]
+            print(f"Using VBR encoding with quality level {vbr_quality} for {target_bitrate}kbps")
+            
+        # Export with optimized settings
+        print(f"Exporting MP3 with bitrate: {target_bitrate}kbps")
+        print(f"Using FFmpeg parameters: {parameters}")
+        audio.export(
+            output_path,
+            format="mp3",
+            bitrate=f"{target_bitrate}k",
+            parameters=parameters
+        )
+        
+        # Verify the file was created
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            try:
+                # Verify the output file details
+                output_info = mediainfo(output_path)
+                print(f"Output file info: {output_info.get('format_name', 'unknown')}, {output_info.get('duration', 'unknown')}s")
+                
+                # Check actual bitrate
+                if FFPROBE_AVAILABLE and target_bitrate == 320:
+                    actual_bitrate = get_mp3_bitrate_with_ffprobe(output_path)
+                    print(f"Verified bitrate: {actual_bitrate} kbps (target was {target_bitrate} kbps)")
+                    
+                    # If bitrate is significantly lower, try direct FFmpeg approach
+                    if actual_bitrate and actual_bitrate < target_bitrate * 0.95:
+                        print(f"Bitrate is too low ({actual_bitrate}kbps), falling back to direct FFmpeg encoding")
+                        return convert_to_mp3_with_ffmpeg(input_path, output_path, target_bitrate)
+                
+            except Exception as e:
+                print(f"Could not verify output details: {e}")
+                
+            print(f"MP3 conversion successful: {output_path}")
+            return True
+        else:
+            print(f"MP3 output file missing or empty: {output_path}")
+            return False
+            
+    except Exception as e:
+        print(f"Error during conversion to MP3: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        # Clean up potentially partially written output file
+        if os.path.exists(output_path):
+            try:
+                os.remove(output_path)
+                print(f"Cleaned up partial output file: {output_path}")
+            except Exception as e_clean:
+                print(f"Error cleaning up partial output {output_path}: {e_clean}", file=sys.stderr)
+        return False
+
+# Fallback function using direct FFmpeg for more control
+def convert_to_mp3_with_ffmpeg(input_path, output_path, target_bitrate):
+    """
+    Convert audio to MP3 using direct FFmpeg command for maximum control
+    This is a fallback for when pydub doesn't achieve the desired bitrate
+    """
+    print(f"Using direct FFmpeg for MP3 conversion at {target_bitrate}kbps")
+    
+    try:
+        # Remove output file if it exists
+        if os.path.exists(output_path):
+            os.remove(output_path)
+            
+        # Build FFmpeg command for strict CBR encoding
+        cmd = [
+            "ffmpeg",
+            "-y",                           # Overwrite output
+            "-i", input_path,               # Input file
+            "-c:a", "libmp3lame",           # MP3 codec
+            "-b:a", f"{target_bitrate}k",   # Target bitrate
+            "-minrate", f"{target_bitrate}k", # Min bitrate
+            "-maxrate", f"{target_bitrate}k", # Max bitrate
+            "-bufsize", f"{target_bitrate}k", # Buffer size
+            "-vbr", "off",                  # Disable VBR
+            "-compression_level", "0",      # Max compression
+            "-af", "apad=pad_dur=0",        # Avoid end trimming
+            output_path                     # Output file
+        ]
+        
+        print(f"FFmpeg command: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"FFmpeg error: {result.stderr}")
+            return False
+            
+        # Verify the file was created and has correct bitrate
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+            if FFPROBE_AVAILABLE:
+                actual_bitrate = get_mp3_bitrate_with_ffprobe(output_path)
+                print(f"Verified FFmpeg bitrate: {actual_bitrate} kbps")
+                
+            print(f"Direct FFmpeg MP3 conversion successful: {output_path}")
+            return True
+        else:
+            print(f"FFmpeg output file missing or empty: {output_path}")
+            return False
+    
+    except Exception as e:
+        print(f"Error during direct FFmpeg conversion: {e}")
         return False
 
 @app.route('/download/<filename>')
@@ -699,6 +935,59 @@ def download_file(filename):
         from flask import abort
         abort(500, description="Server error during download.")
 
+@app.route('/download-all', methods=['POST'])
+def download_all_files():
+    """Creates a zip file containing all requested converted files and sends it."""
+    try:
+        # Get the list of filenames from the request
+        data = request.get_json()
+        if not data or 'filenames' not in data or not data['filenames']:
+            return jsonify({'error': 'No filenames provided'}), 400
+            
+        filenames = data['filenames']
+        print(f"Requested files for ZIP: {filenames}")
+        
+        # Validate filenames for security (no path traversal)
+        for filename in filenames:
+            if '..' in filename or filename.startswith('/'):
+                return jsonify({'error': 'Invalid filename detected'}), 400
+                
+            # Also check if the file actually exists
+            file_path = os.path.join(app.config['CONVERTED_FOLDER'], secure_filename(filename))
+            if not os.path.isfile(file_path):
+                return jsonify({'error': f'File not found: {filename}'}), 404
+        
+        # Create a temporary zip file
+        timestamp = int(time.time())
+        zip_filename = f"dithero_downloads_{timestamp}.zip"
+        temp_dir = tempfile.gettempdir()
+        zip_path = os.path.join(temp_dir, zip_filename)
+        
+        # Create the zip file
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for filename in filenames:
+                safe_filename = secure_filename(filename)
+                file_path = os.path.join(app.config['CONVERTED_FOLDER'], safe_filename)
+                if os.path.isfile(file_path):
+                    # Add the file to the zip with just its name (no path)
+                    zipf.write(file_path, arcname=safe_filename)
+                    print(f"Added {safe_filename} to zip")
+                else:
+                    print(f"Warning: File not found: {file_path}")
+        
+        # Send the zip file
+        return send_file(
+            zip_path,
+            as_attachment=True,
+            download_name=zip_filename,
+            mimetype='application/zip'
+        )
+        
+    except Exception as e:
+        print(f"Error creating zip file: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to create zip file'}), 500
 
 if __name__ == '__main__':
     print(f"Flask starting. Pydub available: {PYDUB_AVAILABLE}")

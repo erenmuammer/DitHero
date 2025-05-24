@@ -14,12 +14,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const mp3BitrateContainer = document.getElementById('mp3BitrateContainer');
     const mp3BitrateSelect = document.getElementById('mp3BitrateSelect');
     const wavOptionsContainer = document.getElementById('wavOptionsContainer');
+    const batchDownloadBtn = document.getElementById('batchDownloadBtn');
+    const convertToMp3Toggle = document.getElementById('convertToMp3Toggle');
 
     // --- State ---
     let fileQueue = []; // Array to hold file objects { id, originalFile, status, statusText, element, serverFilepath, originalFilename, analysisInfo, error, downloadUrl, isConverting }
     let isBatchConverting = false;
     let hasMp3Files = false; // Track if we have MP3 files in the queue
     let hasWavFiles = false; // Track if we have WAV files in the queue
+    let isZipDownloading = false; // Track if a zip download is in progress
+    let convertLosslessToMp3 = false; // Track if we should convert WAV/AIFF/FLAC to MP3
 
     // --- Event Listeners ---
 
@@ -27,6 +31,14 @@ document.addEventListener('DOMContentLoaded', () => {
     selectFilesBtn.addEventListener('click', () => {
         fileInput.click();
     });
+
+    // Handle Convert to MP3 toggle
+    if (convertToMp3Toggle) {
+        convertToMp3Toggle.addEventListener('change', function() {
+            convertLosslessToMp3 = this.checked;
+            updateOptionsVisibility();
+        });
+    }
 
     // Handle file selection
     fileInput.addEventListener('change', async (event) => {
@@ -77,6 +89,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Handle "Convert All" button click
     convertAllBtn.addEventListener('click', handleBatchConvert);
+    
+    // Handle "Batch Download" button click
+    if (batchDownloadBtn) {
+        batchDownloadBtn.addEventListener('click', handleBatchDownload);
+    }
 
     // --- Drag and Drop Event Listeners ---
     dropZone.addEventListener('dragenter', (e) => {
@@ -145,6 +162,18 @@ document.addEventListener('DOMContentLoaded', () => {
         hasWavFiles = false;
         mp3BitrateContainer.style.display = 'none'; // Hide MP3 bitrate options
         wavOptionsContainer.style.display = 'none'; // Hide WAV options
+        
+        // Hide batch download button
+        if (batchDownloadBtn) {
+            batchDownloadBtn.style.display = 'none';
+            batchDownloadBtn.disabled = true;
+        }
+        
+        // Reset convert to MP3 toggle (optional)
+        if (convertToMp3Toggle && convertToMp3Toggle.checked) {
+            convertToMp3Toggle.checked = false;
+            convertLosslessToMp3 = false;
+        }
     }
 
     async function analyzeSingleFile(fileEntry) {
@@ -223,22 +252,37 @@ document.addEventListener('DOMContentLoaded', () => {
         updateConvertAllButtonState();
     }
 
-    // Function to update options visibility based on file types
+    // Function to update options visibility based on file types and settings
     function updateFileTypeOptions() {
-        // Show/hide MP3 bitrate options
-        mp3BitrateContainer.style.display = hasMp3Files ? 'block' : 'none';
+        // Show/hide appropriate option containers based on the toggle state and file types
+        if (convertLosslessToMp3) {
+            // When "Convert to MP3" is enabled, always show MP3 options for both WAV and MP3 files
+            mp3BitrateContainer.style.display = 'block';
+            // Hide WAV options since we'll be converting to MP3
+            wavOptionsContainer.style.display = 'none';
+        } else {
+            // Standard behavior: show options based on file types
+            mp3BitrateContainer.style.display = hasMp3Files ? 'block' : 'none';
+            wavOptionsContainer.style.display = hasWavFiles ? 'block' : 'none';
+        }
         
-        // Show/hide WAV options (sample rate and bit depth)
-        wavOptionsContainer.style.display = hasWavFiles ? 'block' : 'none';
-        
-        // If we have both types, add some visual separation
-        if (hasMp3Files && hasWavFiles) {
-            // Add a class to highlight different sections
+        // Add visual separation if needed
+        if (hasMp3Files && hasWavFiles && !convertLosslessToMp3) {
             wavOptionsContainer.classList.add('separate-options');
             mp3BitrateContainer.classList.add('separate-options');
         } else {
             wavOptionsContainer.classList.remove('separate-options');
             mp3BitrateContainer.classList.remove('separate-options');
+        }
+    }
+
+    // Handle toggle visibility changes
+    function updateOptionsVisibility() {
+        updateFileTypeOptions();
+        
+        // Update UI feedback based on toggle state
+        if (convertLosslessToMp3 && hasWavFiles) {
+            showGlobalStatus("WAV/AIFF/FLAC files will be converted to MP3 format.", "info");
         }
     }
 
@@ -261,12 +305,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 original_filename: fileEntry.originalFilename,
             };
             
-            // Add proper parameters based on file type
+            // Add proper parameters based on file type and conversion setting
             if (fileEntry.isMp3) {
                 // For MP3 files, use the bitrate parameter
                 conversionData.mp3_bitrate = parseInt(mp3BitrateSelect.value, 10);
+            } else if (fileEntry.isLossless && convertLosslessToMp3) {
+                // For lossless files (WAV/AIFF/FLAC) when converting to MP3
+                conversionData.target_format = 'mp3';
+                conversionData.mp3_bitrate = parseInt(mp3BitrateSelect.value, 10);
             } else {
-                // For WAV and other files, use sample rate and bit depth
+                // For WAV and other files with regular conversion
                 conversionData.target_sr = parseInt(sampleRateSelect.value, 10);
                 conversionData.target_bit_depth = bitDepthSelect.value;
             }
@@ -285,7 +333,10 @@ document.addEventListener('DOMContentLoaded', () => {
             fileEntry.statusText = 'Completed';
             // Construct download URL based on Flask route (adjust if needed)
             fileEntry.downloadUrl = `/download/${result.download_filename}`;
-
+            
+            // Update batch download button state whenever a conversion completes
+            updateBatchDownloadButtonState();
+            
         } catch (error) {
             console.error('Conversion error for', fileEntry.originalFilename, ':', error);
             fileEntry.status = 'error';
@@ -336,12 +387,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     original_filename: fileEntry.originalFilename,
                 };
                 
-                // Add proper parameters based on file type
+                // Add proper parameters based on file type and conversion setting
                 if (fileEntry.isMp3) {
                     // For MP3 files, use the bitrate parameter
                     conversionData.mp3_bitrate = targetMp3Bitrate;
+                } else if (fileEntry.isLossless && convertLosslessToMp3) {
+                    // For lossless files (WAV/AIFF/FLAC) when converting to MP3
+                    conversionData.target_format = 'mp3';
+                    conversionData.mp3_bitrate = targetMp3Bitrate;
                 } else {
-                    // For WAV and other files, use sample rate and bit depth
+                    // For WAV and other files with regular conversion
                     conversionData.target_sr = targetSr;
                     conversionData.target_bit_depth = targetBitDepth;
                 }
@@ -374,9 +429,94 @@ document.addEventListener('DOMContentLoaded', () => {
         isBatchConverting = false;
         convertAllBtn.innerHTML = 'Convert All Ready'; // Reset button text
         updateConvertAllButtonState(); // Re-evaluate state based on remaining files
-
+        
+        // Also explicitly update batch download button
+        updateBatchDownloadButtonState();
+        
         let finalMessage = `Batch conversion finished. ${batchSuccess} succeeded, ${batchError} failed.`;
         showGlobalStatus(finalMessage, batchError > 0 ? 'warning' : 'success');
+    }
+
+    async function handleBatchDownload() {
+        if (isZipDownloading) return; // Prevent multiple clicks
+        
+        // Find all completed files with download URLs
+        const completedFiles = fileQueue.filter(f => f.status === 'done' && f.downloadUrl);
+        
+        if (completedFiles.length === 0) {
+            showGlobalStatus('No completed files to download.', 'warning');
+            return;
+        }
+        
+        try {
+            isZipDownloading = true;
+            batchDownloadBtn.innerHTML = '<span class="spinner"></span> Creating ZIP...';
+            batchDownloadBtn.disabled = true;
+            
+            // Extract just the filenames from the download URLs
+            const filenames = completedFiles.map(file => {
+                // Extract filename from the download URL
+                // Format is "/download/filename.ext"
+                const parts = file.downloadUrl.split('/');
+                return parts[parts.length - 1];
+            });
+            
+            // Send the list of filenames to the server
+            const response = await fetch('/download-all', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ filenames })
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || `Server error: ${response.status}`);
+            }
+            
+            // Get the ZIP file as a blob
+            const blob = await response.blob();
+            
+            // Create a download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `dithero_downloads.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            
+            showGlobalStatus(`ZIP file with ${completedFiles.length} files prepared for download.`, 'success');
+        } catch (error) {
+            console.error('ZIP download error:', error);
+            showGlobalStatus(`Error creating ZIP: ${error.message}`, 'danger');
+        } finally {
+            isZipDownloading = false;
+            batchDownloadBtn.innerHTML = 'Download All as ZIP';
+            batchDownloadBtn.disabled = false;
+            
+            // Update button state
+            updateBatchDownloadButtonState();
+        }
+    }
+
+    function updateBatchDownloadButtonState() {
+        if (!batchDownloadBtn) return;
+        
+        // Count completed files
+        const completedCount = fileQueue.filter(f => f.status === 'done' && f.downloadUrl).length;
+        
+        // Show/hide and enable/disable based on completed files
+        if (completedCount > 0) {
+            batchDownloadBtn.style.display = 'block';
+            batchDownloadBtn.disabled = isZipDownloading;
+            batchDownloadBtn.innerHTML = isZipDownloading ? 
+                '<span class="spinner"></span> Creating ZIP...' : 
+                `Download All (${completedCount}) as ZIP`;
+        } else {
+            batchDownloadBtn.style.display = 'none';
+            batchDownloadBtn.disabled = true;
+        }
     }
 
     // --- UI Update Functions ---
@@ -513,6 +653,9 @@ document.addEventListener('DOMContentLoaded', () => {
         // Disable if batch is running, or any individual file is converting, or no files are ready
         convertAllBtn.disabled = isBatchConverting || fileQueue.some(f => f.isConverting) || readyCount === 0;
         noFilesMessage.style.display = fileQueue.length > 0 ? 'none' : 'block'; // Hide if queue has items
+        
+        // Also update batch download button state
+        updateBatchDownloadButtonState();
     }
 
     function showGlobalStatus(message, type = 'info') {
@@ -557,5 +700,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- Initial Setup ---
     resetUI(); // Ensure clean state on load
-
+    
+    // Init toggle state
+    if (convertToMp3Toggle) {
+        convertLosslessToMp3 = convertToMp3Toggle.checked;
+    }
+    
 }); // End DOMContentLoaded 
